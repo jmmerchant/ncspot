@@ -2,8 +2,9 @@ name: CD
 
 on:
   push:
-    tags:
-      - "v*.*.*"
+    branches: [ citest ]
+    # tags:
+    #   - "v*.*.*"
 
 jobs:
   publish:
@@ -11,18 +12,18 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        build_target: [linux, macos]
+        build_target: [linux]
         include:
           - build_target: linux
             os: ubuntu-latest
             artifact_prefix: linux
             target: x86_64-unknown-linux-gnu
             features: ''
-          - build_target: macos
-            os: macos-latest
-            artifact_prefix: macos
-            target: x86_64-apple-darwin
-            features: '--no-default-features --features portaudio_backend,cursive/pancurses-backend'
+          # - build_target: macos
+          #   os: macos-latest
+          #   artifact_prefix: macos
+          #   target: x86_64-apple-darwin
+          #   features: '--no-default-features --features portaudio_backend,cursive/pancurses-backend'
     steps:
       - name: Install Rust toolchain
         uses: actions-rs/toolchain@v1
@@ -52,20 +53,28 @@ jobs:
         with:
           command: build
           args: --locked --release --target ${{ matrix.target }} ${{ matrix.features }}
+      - name: Building .deb package
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          cargo install cargo-deb
+          cargo-deb --no-build --target ${{ matrix.target }}
       - name: Extract git tag
         shell: bash
         run: echo "##[set-output name=tag;]$(echo ${GITHUB_REF#refs/tags/})"
         id: extract_tag
-      - name: Packaging assets
-        shell: bash
-        run: |
-          cd target/${{ matrix.target }}/release
-          strip ncspot
-          tar czvf ncspot-${{ steps.extract_tag.outputs.tag }}-${{ matrix.artifact_prefix }}.tar.gz ncspot
-          shasum -a 256 ncspot-${{ steps.extract_tag.outputs.tag }}-${{ matrix.artifact_prefix }}.tar.gz > ncspot-${{ steps.extract_tag.outputs.tag }}-${{ matrix.artifact_prefix }}.sha256
+      # - name: Packaging assets
+      #   shell: bash
+      #   run: |
+      #     cd target/${{ matrix.target }}/release
+      #     strip ncspot
+      #     tar czvf ncspot-${{ steps.extract_tag.outputs.tag }}-${{ matrix.artifact_prefix }}.tar.gz ncspot
+      #     shasum -a 256 ncspot-${{ steps.extract_tag.outputs.tag }}-${{ matrix.artifact_prefix }}.tar.gz > ncspot-${{ steps.extract_tag.outputs.tag }}-${{ matrix.artifact_prefix }}.sha256
       - name: Releasing assets
         uses: softprops/action-gh-release@v1
         with:
-          files: target/${{ matrix.target }}/release/ncspot-*
+          fail_on_unmatched_files: false
+          files: |
+            target/${{ matrix.target }}/release/ncspot-*
+            target/${{ matrix.target }}/debian/ncspot*.deb
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
